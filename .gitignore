@@ -1,0 +1,14 @@
+# Binários compilados
+/bin/
+*.exe
+*.out
+
+# Variáveis de ambiente
+.env
+
+# Arquivos de IDE
+.vscode/
+.idea/
+
+# SO
+.DS_Store
