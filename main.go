@@ -17,7 +17,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, X-Client-Type")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
@@ -46,23 +46,20 @@ func main() {
 		log.Println("Aviso: arquivo .env não encontrado, usando variáveis do sistema")
 	}
 
-	var userRepo user.Repository
-
 	pool, err := database.Connect()
 	if err != nil {
-		log.Printf("⚠️  Aviso: Não foi possível conectar ao PostgreSQL (%v). Utilizando repositório em memória com seed padrão.", err)
-		userRepo = user.NewMemoryRepository()
-	} else {
-		defer pool.Close()
-		log.Println("✓ Conexão com o banco de dados PostgreSQL estabelecida com sucesso!")
-		pgRepo := user.NewPostgresRepository(pool)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if err := pgRepo.SeedDefaultUsers(ctx); err != nil {
-			log.Printf("Aviso ao rodar seed no PostgreSQL: %v", err)
-		}
-		cancel()
-		userRepo = pgRepo
+		log.Fatalf("❌ Erro fatal: Não foi possível conectar ao banco de dados PostgreSQL: %v", err)
 	}
+	defer pool.Close()
+
+	log.Println("✓ Conexão com o banco de dados PostgreSQL estabelecida com sucesso!")
+	userRepo := user.NewPostgresRepository(pool)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := userRepo.SeedDefaultUsers(ctx); err != nil {
+		log.Printf("Aviso ao rodar seed no PostgreSQL: %v", err)
+	}
+	cancel()
 
 	authHandler := auth.NewHandler(userRepo)
 

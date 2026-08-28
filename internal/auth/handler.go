@@ -21,6 +21,7 @@ type LoginRequest struct {
 	Email      string `json:"email"`
 	Phone      string `json:"phone"`
 	Password   string `json:"password"`
+	ClientType string `json:"client_type"` // e.g. "driver"
 }
 
 type LoginResponse struct {
@@ -73,6 +74,20 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if login is restricted to driver
+	clientType := req.ClientType
+	if clientType == "" {
+		clientType = r.Header.Get("X-Client-Type")
+	}
+
+	if clientType == "driver" && u.Type != user.TypeDriver {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(ErrorResponse{
+			Error: "Acesso exclusivo para motoristas parceiros. Administradores devem acessar o Backoffice.",
+		})
+		return
+	}
+
 	token, err := GenerateToken(u)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -118,6 +133,15 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "Usuário não encontrado"})
+		return
+	}
+
+	clientType := r.Header.Get("X-Client-Type")
+	if clientType == "driver" && u.Type != user.TypeDriver {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(ErrorResponse{
+			Error: "Acesso exclusivo para motoristas parceiros. Administradores devem acessar o Backoffice.",
+		})
 		return
 	}
 

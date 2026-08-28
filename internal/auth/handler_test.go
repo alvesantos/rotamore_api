@@ -15,35 +15,11 @@ func TestAuthFlow(t *testing.T) {
 	repo := user.NewMemoryRepository()
 	handler := auth.NewHandler(repo)
 
-	// 1. Test Admin Login
-	adminBody, _ := json.Marshal(map[string]string{
-		"identifier": "rogab@admin.com",
-		"password":   "r0g4b@2026!",
-	})
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(adminBody))
-	w := httptest.NewRecorder()
-	handler.Login(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("esperava status 200 para login do admin, obteve %d: %s", w.Code, w.Body.String())
-	}
-
-	var adminResp auth.LoginResponse
-	if err := json.NewDecoder(w.Body).Decode(&adminResp); err != nil {
-		t.Fatalf("erro ao decodificar resposta do admin: %v", err)
-	}
-
-	if adminResp.User.Type != user.TypeAdmin {
-		t.Errorf("esperava tipo 'admin', obteve '%s'", adminResp.User.Type)
-	}
-	if adminResp.Token == "" {
-		t.Error("token não retornado")
-	}
-
-	// 2. Test Driver Login
+	// 1. Test Driver Login with client_type = "driver" -> SUCCESS
 	driverBody, _ := json.Marshal(map[string]string{
-		"identifier": "ricberns@gmail.com",
-		"password":   "1254101254@Abc",
+		"identifier":  "ricberns@gmail.com",
+		"password":    "1254101254@Abc",
+		"client_type": "driver",
 	})
 	reqDriver := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(driverBody))
 	wDriver := httptest.NewRecorder()
@@ -62,10 +38,24 @@ func TestAuthFlow(t *testing.T) {
 		t.Errorf("esperava tipo 'driver', obteve '%s'", driverResp.User.Type)
 	}
 
+	// 2. Test Admin Login trying to access Driver portal (client_type = "driver") -> FORBIDDEN (403)
+	adminBody, _ := json.Marshal(map[string]string{
+		"identifier":  "rogab@admin.com",
+		"password":    "r0g4b@2026!",
+		"client_type": "driver",
+	})
+	reqAdmin := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(adminBody))
+	wAdmin := httptest.NewRecorder()
+	handler.Login(wAdmin, reqAdmin)
+
+	if wAdmin.Code != http.StatusForbidden {
+		t.Fatalf("esperava status 403 para login de admin no app de motorista, obteve %d: %s", wAdmin.Code, wAdmin.Body.String())
+	}
+
 	// 3. Test Invalid Password
 	invalidBody, _ := json.Marshal(map[string]string{
-		"identifier": "rogab@admin.com",
-		"password":   "senha_incorreta",
+		"identifier": "ricberns@gmail.com",
+		"password":   "senha_errada",
 	})
 	reqInvalid := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(invalidBody))
 	wInvalid := httptest.NewRecorder()
@@ -77,7 +67,7 @@ func TestAuthFlow(t *testing.T) {
 
 	// 4. Test Me endpoint
 	reqMe := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
-	reqMe.Header.Set("Authorization", "Bearer "+adminResp.Token)
+	reqMe.Header.Set("Authorization", "Bearer "+driverResp.Token)
 	wMe := httptest.NewRecorder()
 	handler.Me(wMe, reqMe)
 
