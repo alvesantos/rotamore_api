@@ -83,6 +83,15 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if user is active
+	if strings.ToLower(u.Status) == "inactive" {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(ErrorResponse{
+			Error: "Sua conta está inativa. Entre em contato com o suporte ou administrador.",
+		})
+		return
+	}
+
 	// Check if login is restricted to driver
 	clientType := req.ClientType
 	if clientType == "" {

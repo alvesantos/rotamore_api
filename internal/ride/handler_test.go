@@ -22,12 +22,13 @@ func TestRideFlowAndIsolation(t *testing.T) {
 	t1, _ := auth.GenerateToken(driver1)
 	t2, _ := auth.GenerateToken(driver2)
 
-	// 1. Driver 1 creates a ride
+	// 1. Driver 1 creates a Transfer ride
 	reqBody, _ := json.Marshal(map[string]interface{}{
+		"category":         "transfer",
 		"customer_name":    "Maria Silva",
 		"customer_phone":   "11999998888",
 		"passengers_count": 2,
-		"pickup":           "Aeroporto",
+		"pickup":           "Aeroporto Zumbi dos Palmares",
 		"destination":      "Hotel Ponta Verde",
 		"notes":            "Voo G3 1450",
 		"ride_date":        "2026-09-10",
@@ -44,12 +45,31 @@ func TestRideFlowAndIsolation(t *testing.T) {
 		t.Fatalf("esperava 201, obteve %d: %s", w.Code, w.Body.String())
 	}
 
-	var res struct {
-		Ride ride.Ride `json:"ride"`
-	}
-	_ = json.NewDecoder(w.Body).Decode(&res)
+	// 2. Driver 1 creates a Passeio ride with multiple stops
+	reqPasseioBody, _ := json.Marshal(map[string]interface{}{
+		"category":         "passeio",
+		"customer_name":    "João Turista",
+		"customer_phone":   "11988887777",
+		"passengers_count": 4,
+		"pickup":           "Hotel Ritz Lagoa da Anta",
+		"destination":      "Litoral Sul Completo",
+		"stops":            []string{"Praia do Francês", "Praia do Gunga", "Barra de São Miguel"},
+		"notes":            "Parada para almoço no Gunga",
+		"ride_date":        "2026-09-15",
+		"ride_time":        "08:00",
+		"price":            450.0,
+		"status":           "agendada",
+	})
+	reqPasseio := httptest.NewRequest(http.MethodPost, "/api/rides", bytes.NewReader(reqPasseioBody))
+	reqPasseio.Header.Set("Authorization", "Bearer "+t1)
+	wPasseio := httptest.NewRecorder()
+	handler.HandleRides(wPasseio, reqPasseio)
 
-	// 2. Driver 2 lists rides -> 0 rides (isolated)
+	if wPasseio.Code != http.StatusCreated {
+		t.Fatalf("esperava 201 para passeio, obteve %d: %s", wPasseio.Code, wPasseio.Body.String())
+	}
+
+	// 3. Driver 2 lists rides -> 0 rides (isolated)
 	req2 := httptest.NewRequest(http.MethodGet, "/api/rides", nil)
 	req2.Header.Set("Authorization", "Bearer "+t2)
 	w2 := httptest.NewRecorder()
@@ -63,7 +83,7 @@ func TestRideFlowAndIsolation(t *testing.T) {
 		t.Errorf("esperava 0 corridas para driver 2, obteve %d", len(res2.Rides))
 	}
 
-	// 3. Driver 1 lists rides -> 1 ride
+	// 4. Driver 1 lists rides -> 2 rides (1 transfer + 1 passeio)
 	req1 := httptest.NewRequest(http.MethodGet, "/api/rides", nil)
 	req1.Header.Set("Authorization", "Bearer "+t1)
 	w1 := httptest.NewRecorder()
@@ -73,7 +93,7 @@ func TestRideFlowAndIsolation(t *testing.T) {
 		Rides []ride.Ride `json:"rides"`
 	}
 	_ = json.NewDecoder(w1.Body).Decode(&res1)
-	if len(res1.Rides) != 1 {
-		t.Errorf("esperava 1 corrida para driver 1, obteve %d", len(res1.Rides))
+	if len(res1.Rides) != 2 {
+		t.Errorf("esperava 2 corridas para driver 1, obteve %d", len(res1.Rides))
 	}
 }

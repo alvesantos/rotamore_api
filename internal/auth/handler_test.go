@@ -2,6 +2,7 @@ package auth_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -38,7 +39,23 @@ func TestAuthFlow(t *testing.T) {
 		t.Errorf("esperava tipo 'driver', obteve '%s'", driverResp.User.Type)
 	}
 
-	// 2. Test Admin Login trying to access Driver portal (client_type = "driver") -> FORBIDDEN (403)
+	// 2. Test Inactive Driver Login -> FORBIDDEN (403)
+	driverResp.User.Status = "inactive"
+	_ = repo.Update(context.Background(), driverResp.User)
+
+	reqInactive := httptest.NewRequest(http.MethodPost, "/api/auth/login", bytes.NewReader(driverBody))
+	wInactive := httptest.NewRecorder()
+	handler.Login(wInactive, reqInactive)
+
+	if wInactive.Code != http.StatusForbidden {
+		t.Fatalf("esperava status 403 para motorista inativo, obteve %d: %s", wInactive.Code, wInactive.Body.String())
+	}
+
+	// Restore active
+	driverResp.User.Status = "active"
+	_ = repo.Update(context.Background(), driverResp.User)
+
+	// 3. Test Admin Login trying to access Driver portal (client_type = "driver") -> FORBIDDEN (403)
 	adminBody, _ := json.Marshal(map[string]string{
 		"identifier":  "rogab@admin.com",
 		"password":    "r0g4b@2026!",
@@ -52,7 +69,7 @@ func TestAuthFlow(t *testing.T) {
 		t.Fatalf("esperava status 403 para login de admin no app de motorista, obteve %d: %s", wAdmin.Code, wAdmin.Body.String())
 	}
 
-	// 3. Test Invalid Password
+	// 4. Test Invalid Password
 	invalidBody, _ := json.Marshal(map[string]string{
 		"identifier": "ricberns@gmail.com",
 		"password":   "senha_errada",
@@ -65,7 +82,7 @@ func TestAuthFlow(t *testing.T) {
 		t.Errorf("esperava status 401 para senha incorreta, obteve %d", wInvalid.Code)
 	}
 
-	// 4. Test Me endpoint
+	// 5. Test Me endpoint
 	reqMe := httptest.NewRequest(http.MethodGet, "/api/auth/me", nil)
 	reqMe.Header.Set("Authorization", "Bearer "+driverResp.Token)
 	wMe := httptest.NewRecorder()
@@ -75,7 +92,7 @@ func TestAuthFlow(t *testing.T) {
 		t.Fatalf("esperava status 200 para endpoint /me, obteve %d: %s", wMe.Code, wMe.Body.String())
 	}
 
-	// 5. Test UpdateProfile endpoint
+	// 6. Test UpdateProfile endpoint
 	updateBody, _ := json.Marshal(map[string]string{
 		"name":     "Ricardo Atualizado",
 		"lastname": "Berns Novo",

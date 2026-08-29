@@ -17,6 +17,7 @@ var (
 	ErrUserNotFound      = errors.New("usuário não encontrado")
 	ErrInvalidPassword   = errors.New("senha incorreta")
 	ErrUserAlreadyExists = errors.New("usuário já cadastrado com este e-mail ou documento")
+	ErrUserInactive      = errors.New("sua conta está inativa. Entre em contato com o suporte/administrador")
 )
 
 type Repository interface {
@@ -39,7 +40,7 @@ func (r *PostgresRepository) FindByEmailOrPhone(ctx context.Context, identifier 
 	cleanPhone := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(identifier, "(", ""), ")", ""), "-", ""), " ", "")
 
 	query := `
-		SELECT id, name, lastname, phone, type, email, document, COALESCE(state, 'AL'), password_hash, created_at, updated_at
+		SELECT id, name, lastname, phone, type, email, document, COALESCE(state, 'AL'), COALESCE(status, 'active'), password_hash, created_at, updated_at
 		FROM users
 		WHERE LOWER(email) = LOWER($1) OR phone = $1 OR phone = $2
 		LIMIT 1
@@ -56,6 +57,7 @@ func (r *PostgresRepository) FindByEmailOrPhone(ctx context.Context, identifier 
 		&u.Email,
 		&u.Document,
 		&u.State,
+		&u.Status,
 		&u.PasswordHash,
 		&createdAt,
 		&updatedAt,
@@ -72,7 +74,7 @@ func (r *PostgresRepository) FindByEmailOrPhone(ctx context.Context, identifier 
 
 func (r *PostgresRepository) FindByID(ctx context.Context, id string) (*User, error) {
 	query := `
-		SELECT id, name, lastname, phone, type, email, document, COALESCE(state, 'AL'), password_hash, created_at, updated_at
+		SELECT id, name, lastname, phone, type, email, document, COALESCE(state, 'AL'), COALESCE(status, 'active'), password_hash, created_at, updated_at
 		FROM users
 		WHERE id = $1
 		LIMIT 1
@@ -89,6 +91,7 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id string) (*User, er
 		&u.Email,
 		&u.Document,
 		&u.State,
+		&u.Status,
 		&u.PasswordHash,
 		&createdAt,
 		&updatedAt,
@@ -104,12 +107,16 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id string) (*User, er
 }
 
 func (r *PostgresRepository) Update(ctx context.Context, u *User) error {
+	if u.Status == "" {
+		u.Status = "active"
+	}
+
 	query := `
 		UPDATE users
-		SET name = $1, lastname = $2, phone = $3, email = $4, document = $5, state = $6, updated_at = now()
-		WHERE id = $7
+		SET name = $1, lastname = $2, phone = $3, email = $4, document = $5, state = $6, status = $7, updated_at = now()
+		WHERE id = $8
 	`
-	tag, err := r.pool.Exec(ctx, query, u.Name, u.LastName, u.Phone, u.Email, u.Document, u.State, u.ID)
+	tag, err := r.pool.Exec(ctx, query, u.Name, u.LastName, u.Phone, u.Email, u.Document, u.State, u.Status, u.ID)
 	if err != nil {
 		return err
 	}
@@ -132,6 +139,7 @@ func (r *PostgresRepository) SeedDefaultUsers(ctx context.Context) error {
 			email VARCHAR(255) NOT NULL UNIQUE,
 			document VARCHAR(11) NOT NULL UNIQUE,
 			state VARCHAR(50) DEFAULT 'AL',
+			status VARCHAR(20) NOT NULL DEFAULT 'active',
 			password_hash VARCHAR(255) NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -145,10 +153,10 @@ func (r *PostgresRepository) SeedDefaultUsers(ctx context.Context) error {
 	driverHash, _ := HashPassword("1254101254@Abc")
 
 	seedQuery := `
-		INSERT INTO users (name, lastname, phone, type, email, document, state, password_hash)
+		INSERT INTO users (name, lastname, phone, type, email, document, state, status, password_hash)
 		VALUES 
-			('Rogab', 'Admin', '11999999999', 'admin', 'rogab@admin.com', '00000000000', 'AL', $1),
-			('Ricardo', 'Berns', '11988888888', 'driver', 'ricberns@gmail.com', '11111111111', 'AL', $2)
+			('Rogab', 'Admin', '11999999999', 'admin', 'rogab@admin.com', '00000000000', 'AL', 'active', $1),
+			('Ricardo', 'Berns', '11988888888', 'driver', 'ricberns@gmail.com', '11111111111', 'AL', 'active', $2)
 		ON CONFLICT (email) DO UPDATE SET
 			password_hash = EXCLUDED.password_hash,
 			name = EXCLUDED.name,
@@ -156,6 +164,7 @@ func (r *PostgresRepository) SeedDefaultUsers(ctx context.Context) error {
 			phone = EXCLUDED.phone,
 			type = EXCLUDED.type,
 			state = EXCLUDED.state,
+			status = EXCLUDED.status,
 			updated_at = now();
 	`
 
@@ -198,6 +207,7 @@ func (r *MemoryRepository) SeedDefaultUsers(ctx context.Context) error {
 		Email:        "rogab@admin.com",
 		Document:     "00000000000",
 		State:        "AL",
+		Status:       "active",
 		PasswordHash: adminHash,
 		CreatedAt:    time.Now().Format(time.RFC3339),
 		UpdatedAt:    time.Now().Format(time.RFC3339),
@@ -212,6 +222,7 @@ func (r *MemoryRepository) SeedDefaultUsers(ctx context.Context) error {
 		Email:        "ricberns@gmail.com",
 		Document:     "11111111111",
 		State:        "AL",
+		Status:       "active",
 		PasswordHash: driverHash,
 		CreatedAt:    time.Now().Format(time.RFC3339),
 		UpdatedAt:    time.Now().Format(time.RFC3339),
@@ -265,6 +276,9 @@ func (r *MemoryRepository) Update(ctx context.Context, u *User) error {
 		existing.Email = u.Email
 		existing.Document = u.Document
 		existing.State = u.State
+		if u.Status != "" {
+			existing.Status = u.Status
+		}
 		existing.UpdatedAt = time.Now().Format(time.RFC3339)
 		return nil
 	}

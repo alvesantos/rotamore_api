@@ -3,6 +3,7 @@ package ride
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
@@ -34,8 +35,9 @@ func (r *PostgresRepository) FindByUserID(ctx context.Context, userID string, li
 			SELECT 
 				r.id, r.user_id, r.vehicle_id,
 				COALESCE(v.name, ''), COALESCE(v.brand, ''), COALESCE(v.plate, ''), COALESCE(v.color, ''),
+				COALESCE(r.category, 'transfer'),
 				r.customer_name, r.customer_phone, r.passengers_count,
-				r.pickup, r.destination, COALESCE(r.notes, ''),
+				r.pickup, r.destination, COALESCE(r.stops, '[]'), COALESCE(r.notes, ''),
 				to_char(r.ride_date, 'YYYY-MM-DD'), r.ride_time, r.price, r.status,
 				r.created_at, r.updated_at
 			FROM rides r
@@ -49,8 +51,9 @@ func (r *PostgresRepository) FindByUserID(ctx context.Context, userID string, li
 			SELECT 
 				r.id, r.user_id, r.vehicle_id,
 				COALESCE(v.name, ''), COALESCE(v.brand, ''), COALESCE(v.plate, ''), COALESCE(v.color, ''),
+				COALESCE(r.category, 'transfer'),
 				r.customer_name, r.customer_phone, r.passengers_count,
-				r.pickup, r.destination, COALESCE(r.notes, ''),
+				r.pickup, r.destination, COALESCE(r.stops, '[]'), COALESCE(r.notes, ''),
 				to_char(r.ride_date, 'YYYY-MM-DD'), r.ride_time, r.price, r.status,
 				r.created_at, r.updated_at
 			FROM rides r
@@ -65,8 +68,9 @@ func (r *PostgresRepository) FindByUserID(ctx context.Context, userID string, li
 			SELECT 
 				r.id, r.user_id, r.vehicle_id,
 				COALESCE(v.name, ''), COALESCE(v.brand, ''), COALESCE(v.plate, ''), COALESCE(v.color, ''),
+				COALESCE(r.category, 'transfer'),
 				r.customer_name, r.customer_phone, r.passengers_count,
-				r.pickup, r.destination, COALESCE(r.notes, ''),
+				r.pickup, r.destination, COALESCE(r.stops, '[]'), COALESCE(r.notes, ''),
 				to_char(r.ride_date, 'YYYY-MM-DD'), r.ride_time, r.price, r.status,
 				r.created_at, r.updated_at
 			FROM rides r
@@ -87,6 +91,7 @@ func (r *PostgresRepository) FindByUserID(ctx context.Context, userID string, li
 	for rows.Next() {
 		var item Ride
 		var vehicleID sql.NullString
+		var stopsRaw string
 		var createdAt, updatedAt time.Time
 		if err := rows.Scan(
 			&item.ID,
@@ -96,11 +101,13 @@ func (r *PostgresRepository) FindByUserID(ctx context.Context, userID string, li
 			&item.VehicleBrand,
 			&item.VehiclePlate,
 			&item.VehicleColor,
+			&item.Category,
 			&item.CustomerName,
 			&item.CustomerPhone,
 			&item.PassengersCount,
 			&item.Pickup,
 			&item.Destination,
+			&stopsRaw,
 			&item.Notes,
 			&item.RideDate,
 			&item.RideTime,
@@ -116,6 +123,13 @@ func (r *PostgresRepository) FindByUserID(ctx context.Context, userID string, li
 			vID := vehicleID.String
 			item.VehicleID = &vID
 		}
+		if stopsRaw != "" {
+			_ = json.Unmarshal([]byte(stopsRaw), &item.Stops)
+		}
+		if item.Stops == nil {
+			item.Stops = []string{}
+		}
+
 		item.CreatedAt = createdAt.Format(time.RFC3339)
 		item.UpdatedAt = updatedAt.Format(time.RFC3339)
 		rides = append(rides, item)
@@ -129,8 +143,9 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id, userID string) (*
 		SELECT 
 			r.id, r.user_id, r.vehicle_id,
 			COALESCE(v.name, ''), COALESCE(v.brand, ''), COALESCE(v.plate, ''), COALESCE(v.color, ''),
+			COALESCE(r.category, 'transfer'),
 			r.customer_name, r.customer_phone, r.passengers_count,
-			r.pickup, r.destination, COALESCE(r.notes, ''),
+			r.pickup, r.destination, COALESCE(r.stops, '[]'), COALESCE(r.notes, ''),
 			to_char(r.ride_date, 'YYYY-MM-DD'), r.ride_time, r.price, r.status,
 			r.created_at, r.updated_at
 		FROM rides r
@@ -141,6 +156,7 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id, userID string) (*
 
 	var item Ride
 	var vehicleID sql.NullString
+	var stopsRaw string
 	var createdAt, updatedAt time.Time
 	err := r.pool.QueryRow(ctx, query, id, userID).Scan(
 		&item.ID,
@@ -150,11 +166,13 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id, userID string) (*
 		&item.VehicleBrand,
 		&item.VehiclePlate,
 		&item.VehicleColor,
+		&item.Category,
 		&item.CustomerName,
 		&item.CustomerPhone,
 		&item.PassengersCount,
 		&item.Pickup,
 		&item.Destination,
+		&stopsRaw,
 		&item.Notes,
 		&item.RideDate,
 		&item.RideTime,
@@ -172,6 +190,13 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id, userID string) (*
 		vID := vehicleID.String
 		item.VehicleID = &vID
 	}
+	if stopsRaw != "" {
+		_ = json.Unmarshal([]byte(stopsRaw), &item.Stops)
+	}
+	if item.Stops == nil {
+		item.Stops = []string{}
+	}
+
 	item.CreatedAt = createdAt.Format(time.RFC3339)
 	item.UpdatedAt = updatedAt.Format(time.RFC3339)
 	return &item, nil
@@ -181,27 +206,40 @@ func (r *PostgresRepository) Create(ctx context.Context, item *Ride) error {
 	if item.Status == "" {
 		item.Status = "agendada"
 	}
+	if item.Category == "" {
+		item.Category = "transfer"
+	}
+	if item.Stops == nil {
+		item.Stops = []string{}
+	}
+
+	stopsJSON, err := json.Marshal(item.Stops)
+	if err != nil {
+		stopsJSON = []byte("[]")
+	}
 
 	query := `
 		INSERT INTO rides (
-			user_id, vehicle_id, customer_name, customer_phone, passengers_count,
-			pickup, destination, notes, ride_date, ride_time, price, status
+			user_id, vehicle_id, category, customer_name, customer_phone, passengers_count,
+			pickup, destination, stops, notes, ride_date, ride_time, price, status
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::DATE, $10, $11, $12)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::DATE, $12, $13, $14)
 		RETURNING id, created_at, updated_at
 	`
 
 	var createdAt, updatedAt time.Time
-	err := r.pool.QueryRow(
+	err = r.pool.QueryRow(
 		ctx,
 		query,
 		item.UserID,
 		item.VehicleID,
+		item.Category,
 		item.CustomerName,
 		item.CustomerPhone,
 		item.PassengersCount,
 		item.Pickup,
 		item.Destination,
+		string(stopsJSON),
 		item.Notes,
 		item.RideDate,
 		item.RideTime,
@@ -278,6 +316,12 @@ func (r *MemoryRepository) Create(ctx context.Context, item *Ride) error {
 	item.ID = fmt.Sprintf("ride_%d", time.Now().UnixNano())
 	if item.Status == "" {
 		item.Status = "agendada"
+	}
+	if item.Category == "" {
+		item.Category = "transfer"
+	}
+	if item.Stops == nil {
+		item.Stops = []string{}
 	}
 	item.CreatedAt = time.Now().Format(time.RFC3339)
 	item.UpdatedAt = time.Now().Format(time.RFC3339)

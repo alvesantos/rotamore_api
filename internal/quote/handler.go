@@ -18,9 +18,11 @@ func NewHandler(repo Repository) *Handler {
 }
 
 type CreateQuoteRequest struct {
-	Pickup      string  `json:"pickup"`
-	Destination string  `json:"destination"`
-	Price       float64 `json:"price"`
+	Category    string   `json:"category"` // 'transfer' | 'passeio'
+	Pickup      string   `json:"pickup"`
+	Destination string   `json:"destination"`
+	Stops       []string `json:"stops"`
+	Price       float64  `json:"price"`
 }
 
 func getUserIDFromAuth(r *http.Request) (string, error) {
@@ -76,16 +78,32 @@ func (h *Handler) HandleQuotes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if req.Pickup == "" || req.Destination == "" || req.Price <= 0 {
+		category := strings.ToLower(strings.TrimSpace(req.Category))
+		if category != "passeio" {
+			category = "transfer"
+		}
+
+		destination := strings.TrimSpace(req.Destination)
+		if category == "passeio" && destination == "" && len(req.Stops) > 0 {
+			destination = strings.Join(req.Stops, " ➔ ")
+		}
+
+		if req.Pickup == "" || destination == "" || req.Price <= 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Embarque, destino e valor válido são obrigatórios"})
 			return
 		}
 
+		if req.Stops == nil {
+			req.Stops = []string{}
+		}
+
 		q := &Quote{
 			UserID:      userID,
-			Pickup:      req.Pickup,
-			Destination: req.Destination,
+			Category:    category,
+			Pickup:      strings.TrimSpace(req.Pickup),
+			Destination: destination,
+			Stops:       req.Stops,
 			Price:       req.Price,
 		}
 

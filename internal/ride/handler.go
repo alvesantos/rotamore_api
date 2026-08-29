@@ -18,17 +18,19 @@ func NewHandler(repo Repository) *Handler {
 }
 
 type CreateRideRequest struct {
-	VehicleID       *string `json:"vehicle_id,omitempty"`
-	CustomerName    string  `json:"customer_name"`
-	CustomerPhone   string  `json:"customer_phone"`
-	PassengersCount int     `json:"passengers_count"`
-	Pickup          string  `json:"pickup"`
-	Destination     string  `json:"destination"`
-	Notes           string  `json:"notes"`
-	RideDate        string  `json:"ride_date"`
-	RideTime        string  `json:"ride_time"`
-	Price           float64 `json:"price"`
-	Status          string  `json:"status"`
+	VehicleID       *string  `json:"vehicle_id,omitempty"`
+	Category        string   `json:"category"` // 'transfer' | 'passeio'
+	CustomerName    string   `json:"customer_name"`
+	CustomerPhone   string   `json:"customer_phone"`
+	PassengersCount int      `json:"passengers_count"`
+	Pickup          string   `json:"pickup"`
+	Destination     string   `json:"destination"`
+	Stops           []string `json:"stops"`
+	Notes           string   `json:"notes"`
+	RideDate        string   `json:"ride_date"`
+	RideTime        string   `json:"ride_time"`
+	Price           float64  `json:"price"`
+	Status          string   `json:"status"`
 }
 
 func getUserIDFromAuth(r *http.Request) (string, error) {
@@ -90,7 +92,18 @@ func (h *Handler) HandleRides(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if req.CustomerName == "" || req.CustomerPhone == "" || req.Pickup == "" || req.Destination == "" || req.RideDate == "" || req.RideTime == "" || req.Price <= 0 {
+		category := strings.ToLower(strings.TrimSpace(req.Category))
+		if category != "passeio" {
+			category = "transfer"
+		}
+
+		// Destination fallback for Passeio with multiple stops
+		destination := strings.TrimSpace(req.Destination)
+		if category == "passeio" && destination == "" && len(req.Stops) > 0 {
+			destination = strings.Join(req.Stops, " ➔ ")
+		}
+
+		if req.CustomerName == "" || req.CustomerPhone == "" || req.Pickup == "" || destination == "" || req.RideDate == "" || req.RideTime == "" || req.Price <= 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Nome do cliente, telefone, trajeto, data, horário e valor são obrigatórios"})
 			return
@@ -102,15 +115,20 @@ func (h *Handler) HandleRides(w http.ResponseWriter, r *http.Request) {
 		if req.Status == "" {
 			req.Status = "agendada"
 		}
+		if req.Stops == nil {
+			req.Stops = []string{}
+		}
 
 		item := &Ride{
 			UserID:          userID,
 			VehicleID:       req.VehicleID,
+			Category:        category,
 			CustomerName:    strings.TrimSpace(req.CustomerName),
 			CustomerPhone:   strings.TrimSpace(req.CustomerPhone),
 			PassengersCount: req.PassengersCount,
 			Pickup:          strings.TrimSpace(req.Pickup),
-			Destination:     strings.TrimSpace(req.Destination),
+			Destination:     destination,
+			Stops:           req.Stops,
 			Notes:           strings.TrimSpace(req.Notes),
 			RideDate:        strings.TrimSpace(req.RideDate),
 			RideTime:        strings.TrimSpace(req.RideTime),

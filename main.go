@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -103,7 +104,12 @@ func main() {
 
 	handlerWithCORS := corsMiddleware(mux)
 
-	log.Println("🚀 Servidor Rota+ API rodando em http://localhost:8080")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("🚀 Servidor Rota+ API rodando na porta :%s", port)
 	log.Println("📋 Rotas disponíveis:")
 	log.Println("  - POST /api/auth/login")
 	log.Println("  - GET  /api/auth/me")
@@ -115,5 +121,5 @@ func main() {
 	log.Println("  - GET  /api/rides/detail")
 	log.Println("  - GET  /")
 
-	log.Fatal(http.ListenAndServe(":8080", handlerWithCORS))
+	log.Fatal(http.ListenAndServe(":"+port, handlerWithCORS))
 }

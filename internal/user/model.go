@@ -17,6 +17,7 @@ type User struct {
 	Email        string   `json:"email"`
 	Document     string   `json:"document"`
 	State        string   `json:"state"`
+	Status       string   `json:"status"` // 'active' | 'inactive'
 	PasswordHash string   `json:"-"`
 	CreatedAt    string   `json:"created_at"`
 	UpdatedAt    string   `json:"updated_at"`
