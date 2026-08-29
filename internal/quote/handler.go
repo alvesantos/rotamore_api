@@ -101,6 +101,22 @@ func (h *Handler) HandleQuotes(w http.ResponseWriter, r *http.Request) {
 			"quote":   q,
 		})
 
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if id == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "ID do orçamento é obrigatório"})
+			return
+		}
+
+		if err := h.repo.Delete(r.Context(), id, userID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Erro ao remover orçamento"})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]string{"message": "Orçamento removido com sucesso"})
+
 	default:
 		http.Error(w, "Método não permitido", http.StatusMethodNotAllowed)
 	}

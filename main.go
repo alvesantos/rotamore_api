@@ -101,7 +101,7 @@ func main() {
 	log.Println("  - PUT  /api/auth/profile")
 	log.Println("  - GET/POST/DELETE /api/vehicles")
 	log.Println("  - PUT  /api/vehicles/active")
-	log.Println("  - GET/POST /api/quotes")
+	log.Println("  - GET/POST/DELETE /api/quotes")
 	log.Println("  - GET  /")
 
 	log.Fatal(http.ListenAndServe(":8080", handlerWithCORS))

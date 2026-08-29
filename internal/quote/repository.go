@@ -12,6 +12,7 @@ import (
 type Repository interface {
 	FindByUserID(ctx context.Context, userID string, limit int) ([]Quote, error)
 	Create(ctx context.Context, q *Quote) error
+	Delete(ctx context.Context, id, userID string) error
 }
 
 type PostgresRepository struct {
@@ -87,6 +88,12 @@ func (r *PostgresRepository) Create(ctx context.Context, q *Quote) error {
 	return nil
 }
 
+func (r *PostgresRepository) Delete(ctx context.Context, id, userID string) error {
+	query := `DELETE FROM quotes WHERE id = $1 AND user_id = $2`
+	_, err := r.pool.Exec(ctx, query, id, userID)
+	return err
+}
+
 // In-memory fallback
 type MemoryRepository struct {
 	mu     sync.RWMutex
@@ -119,5 +126,15 @@ func (r *MemoryRepository) Create(ctx context.Context, q *Quote) error {
 	q.ID = fmt.Sprintf("quote_%d", time.Now().UnixNano())
 	q.CreatedAt = time.Now().Format(time.RFC3339)
 	r.quotes[q.ID] = q
+	return nil
+}
+
+func (r *MemoryRepository) Delete(ctx context.Context, id, userID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if q, ok := r.quotes[id]; ok && q.UserID == userID {
+		delete(r.quotes, id)
+	}
 	return nil
 }
