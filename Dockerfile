@@ -1,7 +1,9 @@
 # Multi-stage Dockerfile for Rota+ Go API
-FROM golang:1.24-alpine AS builder
+FROM golang:alpine AS builder
 
 WORKDIR /app
+
+ENV GOTOOLCHAIN=auto
 
 # Install git and ca-certificates
 RUN apk add --no-cache git ca-certificates tzdata
@@ -29,4 +31,3 @@ ENV TZ=America/Maceio
 EXPOSE 8080
 
 CMD ["/app/server"]
-
