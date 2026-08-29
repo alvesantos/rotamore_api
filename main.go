@@ -11,6 +11,7 @@ import (
 	"rotamore.com.br/api/database"
 	"rotamore.com.br/api/internal/auth"
 	"rotamore.com.br/api/internal/quote"
+	"rotamore.com.br/api/internal/ride"
 	"rotamore.com.br/api/internal/user"
 	"rotamore.com.br/api/internal/vehicle"
 )
@@ -51,6 +52,7 @@ func main() {
 	var userRepo user.Repository
 	var vehicleRepo vehicle.Repository
 	var quoteRepo quote.Repository
+	var rideRepo ride.Repository
 
 	pool, err := database.Connect()
 	if err != nil {
@@ -58,6 +60,7 @@ func main() {
 		userRepo = user.NewMemoryRepository()
 		vehicleRepo = vehicle.NewMemoryRepository()
 		quoteRepo = quote.NewMemoryRepository()
+		rideRepo = ride.NewMemoryRepository()
 	} else {
 		defer pool.Close()
 		log.Println("✓ Conexão com o banco de dados PostgreSQL estabelecida com sucesso!")
@@ -71,11 +74,13 @@ func main() {
 		userRepo = pgRepo
 		vehicleRepo = vehicle.NewPostgresRepository(pool)
 		quoteRepo = quote.NewPostgresRepository(pool)
+		rideRepo = ride.NewPostgresRepository(pool)
 	}
 
 	authHandler := auth.NewHandler(userRepo)
 	vehicleHandler := vehicle.NewHandler(vehicleRepo)
 	quoteHandler := quote.NewHandler(quoteRepo)
+	rideHandler := ride.NewHandler(rideRepo)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", statusHandler)
@@ -92,6 +97,10 @@ func main() {
 	// Quotes (Orçamentos)
 	mux.HandleFunc("/api/quotes", quoteHandler.HandleQuotes)
 
+	// Rides (Minhas Corridas & Vouchers)
+	mux.HandleFunc("/api/rides", rideHandler.HandleRides)
+	mux.HandleFunc("/api/rides/detail", rideHandler.HandleRideDetail)
+
 	handlerWithCORS := corsMiddleware(mux)
 
 	log.Println("🚀 Servidor Rota+ API rodando em http://localhost:8080")
@@ -102,6 +111,8 @@ func main() {
 	log.Println("  - GET/POST/DELETE /api/vehicles")
 	log.Println("  - PUT  /api/vehicles/active")
 	log.Println("  - GET/POST/DELETE /api/quotes")
+	log.Println("  - GET/POST/DELETE /api/rides")
+	log.Println("  - GET  /api/rides/detail")
 	log.Println("  - GET  /")
 
 	log.Fatal(http.ListenAndServe(":8080", handlerWithCORS))
