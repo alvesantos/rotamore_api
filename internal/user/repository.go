@@ -22,6 +22,7 @@ var (
 type Repository interface {
 	FindByEmailOrPhone(ctx context.Context, identifier string) (*User, error)
 	FindByID(ctx context.Context, id string) (*User, error)
+	Update(ctx context.Context, u *User) error
 	SeedDefaultUsers(ctx context.Context) error
 }
 
@@ -35,7 +36,6 @@ func NewPostgresRepository(pool *pgxpool.Pool) *PostgresRepository {
 
 func (r *PostgresRepository) FindByEmailOrPhone(ctx context.Context, identifier string) (*User, error) {
 	identifier = strings.TrimSpace(identifier)
-	// Remove common phone format chars for comparison if needed
 	cleanPhone := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(identifier, "(", ""), ")", ""), "-", ""), " ", "")
 
 	query := `
@@ -99,6 +99,22 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id string) (*User, er
 	u.CreatedAt = createdAt.Format(time.RFC3339)
 	u.UpdatedAt = updatedAt.Format(time.RFC3339)
 	return &u, nil
+}
+
+func (r *PostgresRepository) Update(ctx context.Context, u *User) error {
+	query := `
+		UPDATE users
+		SET name = $1, lastname = $2, phone = $3, email = $4, document = $5, updated_at = now()
+		WHERE id = $6
+	`
+	tag, err := r.pool.Exec(ctx, query, u.Name, u.LastName, u.Phone, u.Email, u.Document, u.ID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
 }
 
 func (r *PostgresRepository) SeedDefaultUsers(ctx context.Context) error {
@@ -230,6 +246,22 @@ func (r *MemoryRepository) FindByID(ctx context.Context, id string) (*User, erro
 		return u, nil
 	}
 	return nil, ErrUserNotFound
+}
+
+func (r *MemoryRepository) Update(ctx context.Context, u *User) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if existing, ok := r.users[u.ID]; ok {
+		existing.Name = u.Name
+		existing.LastName = u.LastName
+		existing.Phone = u.Phone
+		existing.Email = u.Email
+		existing.Document = u.Document
+		existing.UpdatedAt = time.Now().Format(time.RFC3339)
+		return nil
+	}
+	return ErrUserNotFound
 }
 
 func HashPassword(password string) (string, error) {

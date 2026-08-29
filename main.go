@@ -67,6 +67,7 @@ func main() {
 	mux.HandleFunc("/", statusHandler)
 	mux.HandleFunc("/api/auth/login", authHandler.Login)
 	mux.HandleFunc("/api/auth/me", authHandler.Me)
+	mux.HandleFunc("/api/auth/profile", authHandler.UpdateProfile)
 
 	handlerWithCORS := corsMiddleware(mux)
 
@@ -74,6 +75,7 @@ func main() {
 	log.Println("📋 Rotas disponíveis:")
 	log.Println("  - POST /api/auth/login")
 	log.Println("  - GET  /api/auth/me")
+	log.Println("  - PUT  /api/auth/profile")
 	log.Println("  - GET  /")
 
 	log.Fatal(http.ListenAndServe(":8080", handlerWithCORS))

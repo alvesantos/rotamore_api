@@ -74,4 +74,19 @@ func TestAuthFlow(t *testing.T) {
 	if wMe.Code != http.StatusOK {
 		t.Fatalf("esperava status 200 para endpoint /me, obteve %d: %s", wMe.Code, wMe.Body.String())
 	}
+
+	// 5. Test UpdateProfile endpoint
+	updateBody, _ := json.Marshal(map[string]string{
+		"name":     "Ricardo Atualizado",
+		"lastname": "Berns Novo",
+		"phone":    "11977777777",
+	})
+	reqUpdate := httptest.NewRequest(http.MethodPut, "/api/auth/profile", bytes.NewReader(updateBody))
+	reqUpdate.Header.Set("Authorization", "Bearer "+driverResp.Token)
+	wUpdate := httptest.NewRecorder()
+	handler.UpdateProfile(wUpdate, reqUpdate)
+
+	if wUpdate.Code != http.StatusOK {
+		t.Fatalf("esperava status 200 para update profile, obteve %d: %s", wUpdate.Code, wUpdate.Body.String())
+	}
 }
