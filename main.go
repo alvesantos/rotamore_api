@@ -10,7 +10,9 @@ import (
 	"github.com/joho/godotenv"
 	"rotamore.com.br/api/database"
 	"rotamore.com.br/api/internal/auth"
+	"rotamore.com.br/api/internal/quote"
 	"rotamore.com.br/api/internal/user"
+	"rotamore.com.br/api/internal/vehicle"
 )
 
 func corsMiddleware(next http.Handler) http.Handler {
@@ -46,28 +48,49 @@ func main() {
 		log.Println("Aviso: arquivo .env não encontrado, usando variáveis do sistema")
 	}
 
+	var userRepo user.Repository
+	var vehicleRepo vehicle.Repository
+	var quoteRepo quote.Repository
+
 	pool, err := database.Connect()
 	if err != nil {
-		log.Fatalf("❌ Erro fatal: Não foi possível conectar ao banco de dados PostgreSQL: %v", err)
-	}
-	defer pool.Close()
+		log.Printf("⚠️  Aviso: Não foi possível conectar ao PostgreSQL (%v). Utilizando repositório em memória.", err)
+		userRepo = user.NewMemoryRepository()
+		vehicleRepo = vehicle.NewMemoryRepository()
+		quoteRepo = quote.NewMemoryRepository()
+	} else {
+		defer pool.Close()
+		log.Println("✓ Conexão com o banco de dados PostgreSQL estabelecida com sucesso!")
+		pgRepo := user.NewPostgresRepository(pool)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := pgRepo.SeedDefaultUsers(ctx); err != nil {
+			log.Printf("Aviso ao rodar seed no PostgreSQL: %v", err)
+		}
+		cancel()
 
-	log.Println("✓ Conexão com o banco de dados PostgreSQL estabelecida com sucesso!")
-	userRepo := user.NewPostgresRepository(pool)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	if err := userRepo.SeedDefaultUsers(ctx); err != nil {
-		log.Printf("Aviso ao rodar seed no PostgreSQL: %v", err)
+		userRepo = pgRepo
+		vehicleRepo = vehicle.NewPostgresRepository(pool)
+		quoteRepo = quote.NewPostgresRepository(pool)
 	}
-	cancel()
 
 	authHandler := auth.NewHandler(userRepo)
+	vehicleHandler := vehicle.NewHandler(vehicleRepo)
+	quoteHandler := quote.NewHandler(quoteRepo)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", statusHandler)
+
+	// Auth & Profile
 	mux.HandleFunc("/api/auth/login", authHandler.Login)
 	mux.HandleFunc("/api/auth/me", authHandler.Me)
 	mux.HandleFunc("/api/auth/profile", authHandler.UpdateProfile)
+
+	// Vehicles
+	mux.HandleFunc("/api/vehicles", vehicleHandler.HandleVehicles)
+	mux.HandleFunc("/api/vehicles/active", vehicleHandler.HandleSetActive)
+
+	// Quotes (Orçamentos)
+	mux.HandleFunc("/api/quotes", quoteHandler.HandleQuotes)
 
 	handlerWithCORS := corsMiddleware(mux)
 
@@ -76,6 +99,9 @@ func main() {
 	log.Println("  - POST /api/auth/login")
 	log.Println("  - GET  /api/auth/me")
 	log.Println("  - PUT  /api/auth/profile")
+	log.Println("  - GET/POST/DELETE /api/vehicles")
+	log.Println("  - PUT  /api/vehicles/active")
+	log.Println("  - GET/POST /api/quotes")
 	log.Println("  - GET  /")
 
 	log.Fatal(http.ListenAndServe(":8080", handlerWithCORS))
