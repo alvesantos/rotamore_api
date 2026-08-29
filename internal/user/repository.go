@@ -39,7 +39,7 @@ func (r *PostgresRepository) FindByEmailOrPhone(ctx context.Context, identifier 
 	cleanPhone := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(identifier, "(", ""), ")", ""), "-", ""), " ", "")
 
 	query := `
-		SELECT id, name, lastname, phone, type, email, document, password_hash, created_at, updated_at
+		SELECT id, name, lastname, phone, type, email, document, COALESCE(state, 'AL'), password_hash, created_at, updated_at
 		FROM users
 		WHERE LOWER(email) = LOWER($1) OR phone = $1 OR phone = $2
 		LIMIT 1
@@ -55,6 +55,7 @@ func (r *PostgresRepository) FindByEmailOrPhone(ctx context.Context, identifier 
 		&u.Type,
 		&u.Email,
 		&u.Document,
+		&u.State,
 		&u.PasswordHash,
 		&createdAt,
 		&updatedAt,
@@ -71,7 +72,7 @@ func (r *PostgresRepository) FindByEmailOrPhone(ctx context.Context, identifier 
 
 func (r *PostgresRepository) FindByID(ctx context.Context, id string) (*User, error) {
 	query := `
-		SELECT id, name, lastname, phone, type, email, document, password_hash, created_at, updated_at
+		SELECT id, name, lastname, phone, type, email, document, COALESCE(state, 'AL'), password_hash, created_at, updated_at
 		FROM users
 		WHERE id = $1
 		LIMIT 1
@@ -87,6 +88,7 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id string) (*User, er
 		&u.Type,
 		&u.Email,
 		&u.Document,
+		&u.State,
 		&u.PasswordHash,
 		&createdAt,
 		&updatedAt,
@@ -104,10 +106,10 @@ func (r *PostgresRepository) FindByID(ctx context.Context, id string) (*User, er
 func (r *PostgresRepository) Update(ctx context.Context, u *User) error {
 	query := `
 		UPDATE users
-		SET name = $1, lastname = $2, phone = $3, email = $4, document = $5, updated_at = now()
-		WHERE id = $6
+		SET name = $1, lastname = $2, phone = $3, email = $4, document = $5, state = $6, updated_at = now()
+		WHERE id = $7
 	`
-	tag, err := r.pool.Exec(ctx, query, u.Name, u.LastName, u.Phone, u.Email, u.Document, u.ID)
+	tag, err := r.pool.Exec(ctx, query, u.Name, u.LastName, u.Phone, u.Email, u.Document, u.State, u.ID)
 	if err != nil {
 		return err
 	}
@@ -129,6 +131,7 @@ func (r *PostgresRepository) SeedDefaultUsers(ctx context.Context) error {
 			type VARCHAR(20) NOT NULL CHECK (type IN ('driver', 'customer', 'admin')),
 			email VARCHAR(255) NOT NULL UNIQUE,
 			document VARCHAR(11) NOT NULL UNIQUE,
+			state VARCHAR(50) DEFAULT 'AL',
 			password_hash VARCHAR(255) NOT NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -142,16 +145,17 @@ func (r *PostgresRepository) SeedDefaultUsers(ctx context.Context) error {
 	driverHash, _ := HashPassword("1254101254@Abc")
 
 	seedQuery := `
-		INSERT INTO users (name, lastname, phone, type, email, document, password_hash)
+		INSERT INTO users (name, lastname, phone, type, email, document, state, password_hash)
 		VALUES 
-			('Rogab', 'Admin', '11999999999', 'admin', 'rogab@admin.com', '00000000000', $1),
-			('Ricardo', 'Berns', '11988888888', 'driver', 'ricberns@gmail.com', '11111111111', $2)
+			('Rogab', 'Admin', '11999999999', 'admin', 'rogab@admin.com', '00000000000', 'AL', $1),
+			('Ricardo', 'Berns', '11988888888', 'driver', 'ricberns@gmail.com', '11111111111', 'AL', $2)
 		ON CONFLICT (email) DO UPDATE SET
 			password_hash = EXCLUDED.password_hash,
 			name = EXCLUDED.name,
 			lastname = EXCLUDED.lastname,
 			phone = EXCLUDED.phone,
 			type = EXCLUDED.type,
+			state = EXCLUDED.state,
 			updated_at = now();
 	`
 
@@ -193,6 +197,7 @@ func (r *MemoryRepository) SeedDefaultUsers(ctx context.Context) error {
 		Type:         TypeAdmin,
 		Email:        "rogab@admin.com",
 		Document:     "00000000000",
+		State:        "AL",
 		PasswordHash: adminHash,
 		CreatedAt:    time.Now().Format(time.RFC3339),
 		UpdatedAt:    time.Now().Format(time.RFC3339),
@@ -206,6 +211,7 @@ func (r *MemoryRepository) SeedDefaultUsers(ctx context.Context) error {
 		Type:         TypeDriver,
 		Email:        "ricberns@gmail.com",
 		Document:     "11111111111",
+		State:        "AL",
 		PasswordHash: driverHash,
 		CreatedAt:    time.Now().Format(time.RFC3339),
 		UpdatedAt:    time.Now().Format(time.RFC3339),
@@ -258,6 +264,7 @@ func (r *MemoryRepository) Update(ctx context.Context, u *User) error {
 		existing.Phone = u.Phone
 		existing.Email = u.Email
 		existing.Document = u.Document
+		existing.State = u.State
 		existing.UpdatedAt = time.Now().Format(time.RFC3339)
 		return nil
 	}

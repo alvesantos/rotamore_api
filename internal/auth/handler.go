@@ -35,6 +35,7 @@ type UpdateProfileRequest struct {
 	Phone    string `json:"phone"`
 	Email    string `json:"email"`
 	Document string `json:"document"`
+	State    string `json:"state"`
 }
 
 type ErrorResponse struct {
@@ -214,6 +215,9 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Document != "" {
 		u.Document = strings.TrimSpace(req.Document)
+	}
+	if req.State != "" {
+		u.State = strings.TrimSpace(req.State)
 	}
 
 	if err := h.repo.Update(r.Context(), u); err != nil {
